@@ -12,10 +12,9 @@ class connectionManager
     bool isConnected();
     bool isAuthenticated();
   private:
-    String serverIP = "192.168.178.94"; //192.168.178.92
+    String serverIP = "192.168.0.190"; //192.168.0.158
     int serverPort = 8081;
     int heartbeatFrequency = 10000; // ms
 };
-
 
 #endif
