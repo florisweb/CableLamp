@@ -133,7 +133,7 @@ void setSternIntensity(int intensity) {
   if (intensity > 100) intensity = 100;
   String statusMessage = "{\"type\": \"sternIntensity\", \"data\":";
   sternIntensity = intensity * 2.55;
-  statusMessage += sternIntensity;
+  statusMessage += intensity;
   statusMessage += "}";
   ConnectionManager.send(statusMessage);
 }
