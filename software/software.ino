@@ -4,10 +4,10 @@
 
 connectionManager ConnectionManager;
 
-const char* ssid = "WolkenPoort";
-const char* password = "thuisWolk'sEntrance";
+const char* ssid = "";
+const char* password = "";
 const String deviceId = "CableLamp";
-const String deviceKey = "superSecretKey";
+const String deviceKey = "";
 
 // CableLamp
 const int lampEnablePin = 32;
@@ -52,6 +52,9 @@ void onMessage(DynamicJsonDocument message) {
     setLampState(message["data"]);
   } else if (packetType == "setSternIntensity") {
     setSternIntensity(message["data"]);
+  } else if (packetType == "curState") {
+    setLampState(message["data"]["lampOn"]);
+    setSternIntensity(message["data"]["sternIntensity"]);
   }
 }
 
@@ -61,8 +64,6 @@ void onMessage(DynamicJsonDocument message) {
 void setup() {
   Serial.begin(115200);
 
-  //  pinMode(potPin, INPUT);
-  //  pinMode(buttonPin, INPUT);
   pinMode(lampEnablePin, OUTPUT);
   delay(2000);
 
@@ -79,6 +80,32 @@ void setup() {
   Serial.println("Waking up...");
   delay(1000);
 
+  
+  ConnectionManager.defineEventDocs("["
+                                    "{"
+                                    "\"type\": \"lampStatus\","
+                                    "\"data\": \"bool\","
+                                    "\"description\": \"Whether the CableLamp is on or not.\""
+                                    "},"
+                                    "{"
+                                    "\"type\": \"sternIntensity\","
+                                    "\"data\": \"int 0-100\","
+                                    "\"description\": \"The intensity of the Stern.\""
+                                    "}"
+                                    "]");
+  ConnectionManager.defineAccessPointDocs("["
+                                          "{"
+                                          "\"type\": \"setLampState\","
+                                          "\"data\": \"bool\","
+                                          "\"description\": \"Turns the CableLamp on or off.\""
+                                          "},"
+                                          "{"
+                                          "\"type\": \"setSternIntensity\","
+                                          "\"data\": \"int 0-100\","
+                                          "\"description\": \"Sets the intensity of the Stern.\""
+                                          "}"
+                                          "]");
+
   ConnectionManager.setup(ssid, password, deviceId, deviceKey, &onMessage);
 
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
@@ -92,20 +119,7 @@ void setup() {
 unsigned int programStarterClock = 0;
 void loop() {
   ConnectionManager.loop();
-
-  //  buttonState = digitalRead(buttonPin);
-  //  if (prevButtonState != buttonState && buttonState)
-  //  {
-  //    setLampState(!lampOn);
-  //    ConnectionManager.send("{\"type\": \"buttonPressed\"}");
-  //  }
-  //  prevButtonState = buttonState;
-
-
-  // Time detector/program starter
-
-
-
+  
   // Stern
   ledcWrite(transistorChannel, sternIntensity);
 }

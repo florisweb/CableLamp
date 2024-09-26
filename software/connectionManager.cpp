@@ -3,7 +3,7 @@
 #include <WiFiClientSecure.h>
 #include <WebSocketsClient.h>
 #include <ArduinoJson.h>
-#include "connectionManager.h";
+#include "connectionManager.h"
 
 WiFiMulti WiFiMulti;
 WebSocketsClient webSocket;
@@ -12,24 +12,51 @@ String deviceId;
 String deviceKey;
 bool authenticated = false;
 String jsonString;
-unsigned long lastHeartBeat = 0;
 
+
+unsigned long lastHeartBeat = 0;
 void (*onMessagePointer)(DynamicJsonDocument message);
 
 
 
-void hexdump(const void *mem, uint32_t len, uint8_t cols = 16) {
-  const uint8_t* src = (const uint8_t*) mem;
-  Serial.printf("\n[HEXDUMP] Address: 0x%08X len: 0x%X (%d)", (ptrdiff_t)src, len, len);
-  for (uint32_t i = 0; i < len; i++) {
-    if (i % cols == 0) {
-      Serial.printf("\n[0x%08X] 0x%08X: ", (ptrdiff_t)src, i);
-    }
-    Serial.printf("%02X ", *src);
-    src++;
+String eventDocs = "[]";
+String accessPointDocs = "[]";
+void sendDeviceInfo(String _requestId = "") {
+  String dataString = "{\"type\": \"deviceInfo\",";
+  if (_requestId != "")
+  {
+    dataString.concat("\"isResponse\": true, \"requestId\": \"");
+    dataString.concat(_requestId);
+    dataString.concat("\", ");
+    dataString.concat("\"response\": {\"events\": ");
+  } else {
+    dataString.concat("\"data\": {\"events\": ");
   }
-  Serial.printf("\n");
+
+  dataString.concat(eventDocs);
+  dataString.concat(", \"endPoints\": ");
+  dataString.concat(accessPointDocs);
+  dataString.concat(", \"connectionManagerVersion\":");
+  dataString.concat(connectionManager::version);
+  dataString.concat("}}");
+
+  Serial.println(dataString);
+  webSocket.sendTXT(dataString);
 }
+
+
+//void hexdump(const void *mem, uint32_t len, uint8_t cols = 16) {
+//  const uint8_t* src = (const uint8_t*) mem;
+//  Serial.printf("\n[HEXDUMP] Address: 0x%08X len: 0x%X (%d)", (ptrdiff_t)src, len, len);
+//  for (uint32_t i = 0; i < len; i++) {
+//    if (i % cols == 0) {
+//      Serial.printf("\n[0x%08X] 0x%08X: ", (ptrdiff_t)src, i);
+//    }
+//    Serial.printf("%02X ", *src);
+//    src++;
+//  }
+//  Serial.printf("\n");
+//}
 
 void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
   switch (type) {
@@ -63,21 +90,29 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
         {
           lastHeartBeat = millis();
           return;
+        } else if (type == "getDeviceInfo") {
+          String requestId = doc["requestId"];
+          sendDeviceInfo(requestId);
+          return;
         }
         onMessagePointer(doc);
-
       } else {
         DynamicJsonDocument doc(1024);
         deserializeJson(doc, payload);
-        String error = doc["error"];
+        String type = doc["type"];
         String responseContent = doc["response"];
-        if (responseContent == "{\"type\":\"auth\",\"data\":true}");
+
+        if (type == "curState")
+        {
+          onMessagePointer(doc);
+        } else if (responseContent == "{\"type\":\"auth\",\"data\":true}");
         {
           Serial.println("Successfully authenticated.");
           authenticated = true;
+          sendDeviceInfo();
         }
       }
-  
+
       break;
     case WStype_BIN:
       //      hexdump(payload, length);
@@ -108,10 +143,14 @@ void connectionManager::setup(const char* _ssid, const char* _password, const St
   Serial.setDebugOutput(true);
 
   WiFiMulti.addAP(_ssid, _password);
+  Serial.print("Started connecting to network: ");
+  Serial.println(_ssid);
   while (WiFiMulti.run() != WL_CONNECTED)
   {
+    Serial.print(".");
     delay(100);
   }
+  Serial.println("-> Connected!");
 
   webSocket.begin(serverIP, serverPort, "/");
   webSocket.onEvent(webSocketEvent);
@@ -127,6 +166,17 @@ bool connectionManager::isConnected() {
 bool connectionManager::isAuthenticated() {
   return authenticated;
 }
+
+
+void connectionManager::defineEventDocs(String JSONString) {
+  eventDocs = JSONString;
+}
+void connectionManager::defineAccessPointDocs(String JSONString) {
+  accessPointDocs = JSONString;
+}
+
+
+
 
 long deltaHeartbeat = 0;
 void connectionManager::loop() {
