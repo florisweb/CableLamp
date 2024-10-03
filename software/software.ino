@@ -11,17 +11,11 @@ const String deviceKey = "";
 
 // CableLamp
 const int lampEnablePin = 32;
-//const int buttonPin     = 33;
-
-
 boolean lampOn = false;
-//bool buttonState = false;
-//bool prevButtonState = false;
 
 
 // Stern
 const int transistorPin = 12;
-//const int potPin        = 14;
 
 const int transistorChannel = 0;
 const int transistorFrequency = 200;
@@ -52,6 +46,8 @@ void onMessage(DynamicJsonDocument message) {
     setLampState(message["data"]);
   } else if (packetType == "setSternIntensity") {
     setSternIntensity(message["data"]);
+  }else if (packetType == "animateSternIntensity") {
+    animateSternIntensity(message["data"][0], message["data"][1]);
   } else if (packetType == "curState") {
     setLampState(message["data"]["lampOn"]);
     setSternIntensity(message["data"]["sternIntensity"]);
@@ -80,7 +76,7 @@ void setup() {
   Serial.println("Waking up...");
   delay(1000);
 
-  
+
   ConnectionManager.defineEventDocs("["
                                     "{"
                                     "\"type\": \"lampStatus\","
@@ -103,6 +99,11 @@ void setup() {
                                           "\"type\": \"setSternIntensity\","
                                           "\"data\": \"int 0-100\","
                                           "\"description\": \"Sets the intensity of the Stern.\""
+                                          "},"
+                                          "{"
+                                          "\"type\": \"animateSternIntensity\","
+                                          "\"data\": \"[intensity int 0-100, int duration ms]\","
+                                          "\"description\": \"Animates the intensity of the Stern to the provided value.\""
                                           "}"
                                           "]");
 
@@ -119,11 +120,40 @@ void setup() {
 unsigned int programStarterClock = 0;
 void loop() {
   ConnectionManager.loop();
-  
+
   // Stern
-  ledcWrite(transistorChannel, sternIntensity);
+  ledcWrite(transistorChannel, sternIntensity * 2.55);
+
+  updateSternAnimation();
 }
 
+
+
+unsigned int sternAnimationStart = millis();
+int sternAnimationDuration = 0;
+int animateSternTo = 0;
+int animateSternFrom = 0;
+void updateSternAnimation() {
+  if (sternAnimationDuration == 0) return;
+  if (millis() - sternAnimationStart >= sternAnimationDuration) // Finished animation
+  {
+    sternAnimationDuration = 0;
+    setSternIntensity(animateSternTo);
+  } else {
+    float timePerc = (millis() - sternAnimationStart) * 100.0 / sternAnimationDuration;
+    sternIntensity = round(animateSternFrom * (100.0 - timePerc) / 100.0 + animateSternTo * timePerc / 100.0);
+  }
+}
+
+void animateSternIntensity(int intensity, int duration) {
+  if (intensity < 0) intensity = 0;
+  if (intensity > 100) intensity = 100;
+
+  sternAnimationStart = millis();
+  sternAnimationDuration = duration;
+  animateSternTo = intensity;
+  animateSternFrom = sternIntensity;
+}
 
 void setLampState(bool turnLampOn) {
   String statusMessage = "{\"type\": \"lampStatus\", \"data\":";
@@ -146,7 +176,7 @@ void setSternIntensity(int intensity) {
   if (intensity < 0) intensity = 0;
   if (intensity > 100) intensity = 100;
   String statusMessage = "{\"type\": \"sternIntensity\", \"data\":";
-  sternIntensity = intensity * 2.55;
+  sternIntensity = intensity;
   statusMessage += intensity;
   statusMessage += "}";
   ConnectionManager.send(statusMessage);
