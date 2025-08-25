@@ -6,7 +6,7 @@ connectionManager ConnectionManager;
 
 const char* ssid = "";
 const char* password = "";
-const String deviceId = "CableLamp";
+const String deviceId = "";
 const String deviceKey = "";
 
 // CableLamp
@@ -21,16 +21,20 @@ const int transistorChannel = 0;
 const int transistorFrequency = 200;
 const int maxDutyCycle = 100;
 int sternIntensity = 0;
+int prevClickSternIntensity = 0;
 
 
-
+// Rotary encoder
+const int rotDTPin = 32;
+const int rotCLKPin = 33;
+const int rotButtonPin = 25;
 
 
 
 // Get the time
 const char* ntpServer = "pool.ntp.org";
-const long  gmtOffset_sec = 3600;
-const int   daylightOffset_sec = 3600;
+const long gmtOffset_sec = 3600;
+const int daylightOffset_sec = 3600;
 
 void onMessage(DynamicJsonDocument message) {
   String error = message["error"];
@@ -41,12 +45,11 @@ void onMessage(DynamicJsonDocument message) {
   Serial.print("[OnMessage] type: ");
   Serial.println(packetType);
 
-  if (packetType == "setLampState")
-  {
+  if (packetType == "setLampState") {
     setLampState(message["data"]);
   } else if (packetType == "setSternIntensity") {
     setSternIntensity(message["data"]);
-  }else if (packetType == "animateSternIntensity") {
+  } else if (packetType == "animateSternIntensity") {
     animateSternIntensity(message["data"][0], message["data"][1]);
   } else if (packetType == "curState") {
     setLampState(message["data"]["lampOn"]);
@@ -61,12 +64,14 @@ void setup() {
   Serial.begin(115200);
 
   pinMode(lampEnablePin, OUTPUT);
+  pinMode(rotDTPin, INPUT);
+  pinMode(rotCLKPin, INPUT);
+  pinMode(rotButtonPin, INPUT_PULLUP);
   delay(2000);
 
   digitalWrite(lampEnablePin, LOW);
-  ledcAttachPin(transistorPin, transistorChannel);
-  ledcSetup(transistorChannel, transistorFrequency, 8);
-  ledcWrite(transistorChannel, 50);
+  ledcAttach(transistorPin, transistorFrequency, 8);
+  ledcWrite(transistorPin, 50);
 
 
 
@@ -118,13 +123,41 @@ void setup() {
 
 
 unsigned int programStarterClock = 0;
+bool curStateCLK = false;
+bool lastStateCLK = false;
+bool prevRotButtonState = false;
 void loop() {
   ConnectionManager.loop();
 
   // Stern
-  ledcWrite(transistorChannel, sternIntensity * 2.55);
-
+  ledcWrite(transistorPin, sternIntensity * 2.55);
   updateSternAnimation();
+
+
+  bool curRotButtonState = digitalRead(rotButtonPin);
+  if (prevRotButtonState != curRotButtonState && curRotButtonState == 0) 
+  {
+    if (sternIntensity == 0)
+    {
+      animateSternIntensity(prevClickSternIntensity, 150);
+    } else {
+      prevClickSternIntensity = sternIntensity;
+      animateSternIntensity(0, 150);
+    }
+  }
+  prevRotButtonState = curRotButtonState;
+
+  curStateCLK = digitalRead(rotCLKPin);
+  if (curStateCLK != lastStateCLK && curStateCLK == true) {
+    if (digitalRead(rotDTPin) != curStateCLK) {
+      setSternIntensity(sternIntensity + 10);
+    } else {
+      setSternIntensity(sternIntensity - 10);
+    }
+  }
+  lastStateCLK = curStateCLK;
+
+  delay(1);
 }
 
 
@@ -135,7 +168,7 @@ int animateSternTo = 0;
 int animateSternFrom = 0;
 void updateSternAnimation() {
   if (sternAnimationDuration == 0) return;
-  if (millis() - sternAnimationStart >= sternAnimationDuration) // Finished animation
+  if (millis() - sternAnimationStart >= sternAnimationDuration)  // Finished animation
   {
     sternAnimationDuration = 0;
     setSternIntensity(animateSternTo);
@@ -157,8 +190,7 @@ void animateSternIntensity(int intensity, int duration) {
 
 void setLampState(bool turnLampOn) {
   String statusMessage = "{\"type\": \"lampStatus\", \"data\":";
-  if (turnLampOn)
-  {
+  if (turnLampOn) {
     lampOn = true;
     digitalWrite(lampEnablePin, HIGH);
     statusMessage += "true";
